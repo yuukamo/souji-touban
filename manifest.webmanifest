@@ -1,0 +1,17 @@
+{
+  "name": "円形当番表ジェネレーター",
+  "short_name": "当番表",
+  "description": "外周と内円を重ねる二重構造の当番表を作り、A4縦で印刷・PDF出力するためのアプリ。",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#eceae5",
+  "theme_color": "#eceae5",
+  "lang": "ja",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

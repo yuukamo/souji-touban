@@ -1,0 +1,579 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<!-- viewport-fit=cover: ホーム画面から起動したときノッチ/ホームバーの余白を safe-area で自分で扱う -->
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>円形当番表ジェネレーター</title>
+<meta name="theme-color" content="#eceae5">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="当番表">
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="manifest" href="manifest.webmanifest">
+<script src="registerSW.js" defer></script>
+<style>
+  :root{
+    --ink:#1a1a1a;
+    --paper:#fff;
+    --bg:#eceae5;
+    --line:#d5d2cb;
+    --accent:#3b6ea5;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    font-family:"Hiragino Kaku Gothic ProN","Yu Gothic","Meiryo",system-ui,sans-serif;
+    background:var(--bg); color:var(--ink);
+  }
+  .app{display:flex; align-items:flex-start; min-height:100vh}
+
+  /* ------- 設定パネル ------- */
+  .panel{
+    width:320px; flex:0 0 320px; padding:20px 18px 60px;
+    background:#fff; border-right:1px solid var(--line);
+    position:sticky; top:0; max-height:100vh; overflow-y:auto;
+  }
+  .panel h1{font-size:17px; margin:0 0 4px}
+  .panel .sub{font-size:12px; color:#777; margin:0 0 18px; line-height:1.5}
+  fieldset{border:1px solid var(--line); border-radius:8px; padding:12px; margin:0 0 16px}
+  legend{font-size:12px; font-weight:700; padding:0 6px; color:#555}
+  label{display:block; font-size:12px; margin:10px 0 4px; color:#444}
+  label:first-of-type{margin-top:0}
+  input[type=text],input[type=number],textarea,select{
+    width:100%; padding:6px 8px; font:inherit; font-size:13px;
+    border:1px solid #c8c5be; border-radius:5px; background:#fff;
+  }
+  textarea{resize:vertical; line-height:1.6; min-height:110px}
+  input[type=range]{width:100%}
+  .row{display:flex; gap:8px}
+  .row>*{flex:1}
+  .hint{font-size:11px; color:#888; margin:4px 0 0; line-height:1.5}
+  .radios{display:flex; flex-direction:column; gap:6px; margin-top:6px}
+  .radios label{display:flex; align-items:center; gap:6px; margin:0; font-size:13px}
+  .radios input{width:auto}
+  button.print{
+    width:100%; padding:11px; font:inherit; font-weight:700; font-size:14px;
+    background:var(--accent); color:#fff; border:0; border-radius:6px; cursor:pointer;
+  }
+  button.print:hover{background:#2f5c8a}
+  button.reset{
+    width:100%; margin-top:8px; padding:8px; font:inherit; font-size:12px;
+    background:#fff; color:#666; border:1px solid #c8c5be; border-radius:6px; cursor:pointer;
+  }
+
+  /* ------- プレビュー ------- */
+  .preview{flex:1; padding:28px; display:flex; flex-direction:column; align-items:center; gap:24px}
+  .sheet{
+    width:210mm; height:297mm; background:var(--paper);
+    box-shadow:0 2px 16px rgba(0,0,0,.14);
+    display:flex; flex-direction:column; align-items:center;
+    padding:16mm 12mm;
+  }
+  .sheet-title{
+    font-size:9mm; font-weight:700; letter-spacing:.12em;
+    margin:0 0 6mm; text-align:center;
+  }
+  .sheet-note{font-size:3.6mm; color:#555; margin:0 0 4mm; letter-spacing:.06em}
+  .sheet-body{flex:1; display:flex; align-items:center; justify-content:center; width:100%}
+  .sheet svg{width:180mm; height:180mm; display:block}
+  .sheet-foot{font-size:3.2mm; color:#666; letter-spacing:.06em; padding-top:4mm}
+
+  /* 画面が狭いときは設定を上、プレビューを下に積み、用紙は画面幅に合わせて縮める。
+     印刷時は下の @media print が A4 に戻す。 */
+  @media screen and (max-width: 900px){
+    .app{flex-direction:column}
+    .panel{
+      width:100%; flex:none; position:static; max-height:none;
+      border-right:0; border-bottom:1px solid var(--line);
+      padding:max(16px, env(safe-area-inset-top)) 16px 24px;
+    }
+    .preview{
+      padding:16px 12px max(24px, env(safe-area-inset-bottom));
+      gap:16px;
+    }
+    .sheet{
+      width:100%; height:auto;
+      padding:7mm 5mm 9mm;
+    }
+    .sheet svg{width:100%; height:auto}
+    .sheet-title{font-size:6.5mm; margin-bottom:4mm}
+    .sheet-note{font-size:3.2mm}
+    .sheet-foot{font-size:3mm}
+  }
+
+  @media print{
+    @page{size:A4 portrait; margin:0}
+    body{background:#fff}
+    .no-print{display:none !important}
+    .app{display:block}
+    .preview{padding:0; gap:0}
+    .sheet{box-shadow:none; width:210mm; height:297mm; break-after:page; page-break-after:always}
+    .sheet:last-child{break-after:auto; page-break-after:auto}
+  }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <aside class="panel no-print">
+    <h1>円形当番表ジェネレーター</h1>
+    <p class="sub">外周の円と内側の円を重ねる二重構造の当番表を作ります。内円を切り取って中心をとめ、回して当番を割り当てます。</p>
+
+    <fieldset>
+      <legend>全体</legend>
+      <label for="title">タイトル</label>
+      <input type="text" id="title" value="そうじ当番表">
+      <label for="layout">印刷レイアウト</label>
+      <select id="layout">
+        <option value="split">外周と内円を別ページ（2ページ）</option>
+        <option value="outer">外周だけ（1ページ）</option>
+        <option value="inner">内円だけ（1ページ）</option>
+        <option value="overlay">重ねた完成イメージ（1ページ）</option>
+        <option value="both">完成イメージ＋外周＋内円（3ページ）</option>
+      </select>
+      <p class="hint">外周と内円はどちらも円にそって切り取り、中心を重ねてとめます。2枚とも同じ縮尺で出力されるので、それぞれ独立に回せます。</p>
+    </fieldset>
+
+    <fieldset>
+      <legend>外周の円（名前）</legend>
+      <label for="preset">名簿</label>
+      <select id="preset">
+        <option value="1">名簿1</option>
+        <option value="2">名簿2</option>
+        <option value="3">名簿3</option>
+      </select>
+      <label for="outerLabels">この名簿の名前（1行に1つ）</label>
+      <textarea id="outerLabels" spellcheck="false"></textarea>
+      <p class="hint">行数がそのまま分割数になります。1つの区画を2列にしたいときは <code>山田 / 花子</code> のように <code>/</code> で区切ります。名簿1〜3はそれぞれ別に保存されるので、当番表の種類ごとに使い分けられます。</p>
+      <label for="outerRot">向き（回転）<span id="outerRotV"></span></label>
+      <input type="range" id="outerRot" min="0" max="359" value="0">
+    </fieldset>
+
+    <fieldset>
+      <legend>内側の円（作業内容）</legend>
+      <div class="radios">
+        <label><input type="radio" name="innerMode" value="split" checked> 外周と同じように分割する</label>
+        <label><input type="radio" name="innerMode" value="wedge"> 1つの扇形だけ使う（指し示し型）</label>
+      </div>
+      <label for="innerLabels">ラベル（1行に1つ）</label>
+      <textarea id="innerLabels" spellcheck="false"></textarea>
+      <label for="wedgeDeg" id="wedgeDegLabel">扇形の角度<span id="wedgeDegV"></span></label>
+      <input type="range" id="wedgeDeg" min="15" max="180" value="60">
+      <p class="hint" id="countHint"></p>
+      <label for="innerRatio">内円の大きさ<span id="innerRatioV"></span></label>
+      <input type="range" id="innerRatio" min="30" max="80" value="55">
+      <label for="innerRot">向き（回転）<span id="innerRotV"></span></label>
+      <input type="range" id="innerRot" min="0" max="359" value="0">
+    </fieldset>
+
+    <fieldset>
+      <legend>見た目</legend>
+      <div class="row">
+        <div>
+          <label for="stroke">線の太さ</label>
+          <input type="number" id="stroke" min="1" max="8" step="0.5" value="2.5">
+        </div>
+        <div>
+          <label for="fontSize">文字の大きさ</label>
+          <input type="number" id="fontSize" min="10" max="80" step="1" value="44">
+        </div>
+      </div>
+      <label for="font">書体</label>
+      <select id="font">
+        <option value="gothic">ゴシック体</option>
+        <option value="mincho">明朝体</option>
+        <option value="maru">丸ゴシック体</option>
+      </select>
+    </fieldset>
+
+    <button class="print" id="printBtn">印刷 / PDFで保存</button>
+    <button class="reset" id="resetBtn">初期状態に戻す</button>
+    <p class="hint">印刷ダイアログで用紙をA4・向きを縦にし、「背景のグラフィック」は不要です。保存先に「PDFに保存」を選ぶとPDFになります。</p>
+  </aside>
+
+  <main class="preview">
+    <div id="sheets" style="display:contents"></div>
+  </main>
+</div>
+
+<script>
+"use strict";
+
+const NS = "http://www.w3.org/2000/svg";
+const STORAGE_KEY = "duty-wheel-config-v2";
+
+/**
+ * 外周に入れる名簿を3組ぶん持っておく。当番表の種類ごとに使い分ける想定。
+ * 中身は localStorage にだけ置き、公開ファイルには実名を含めない。
+ */
+const DEFAULT_NAME_SETS = {
+  "1": "Aさん\nBさん\nCさん\nDさん",
+  "2": "Aさん\nBさん\nCさん\nDさん",
+  "3": "Aさん\nBさん\nCさん\nDさん\nEさん"
+};
+
+/** 選択中の名簿だけが textarea に出ている。残りはここに退避している */
+let nameSets = { ...DEFAULT_NAME_SETS };
+
+const DEFAULTS = {
+  title: "そうじ当番表",
+  layout: "split",
+  preset: "1",
+  nameSets: DEFAULT_NAME_SETS,
+  innerLabels: "ホウキ\nゾウキン\nまど拭き\nゴミすて\nつくえ拭き",
+  innerMode: "split",
+  wedgeDeg: 60,
+  innerRatio: 55,
+  outerRot: 0,
+  innerRot: 0,
+  stroke: 2.5,
+  fontSize: 44,
+  font: "gothic"
+};
+
+const FONTS = {
+  gothic: '"Hiragino Kaku Gothic ProN","Yu Gothic","Noto Sans JP","Meiryo",sans-serif',
+  mincho: '"Hiragino Mincho ProN","Yu Mincho","Noto Serif JP","MS Mincho",serif',
+  maru:   '"Hiragino Maru Gothic ProN","Rounded Mplus 1c","Noto Sans JP",sans-serif'
+};
+
+/* ---------- SVG 補助 ---------- */
+function svgEl(tag, attrs){
+  const e = document.createElementNS(NS, tag);
+  for (const k in attrs) e.setAttribute(k, attrs[k]);
+  return e;
+}
+
+/** 角度(0=真上, 時計回り)と半径から座標を返す */
+function polar(cx, cy, r, deg){
+  const rad = (deg - 90) * Math.PI / 180;
+  return [cx + r * Math.cos(rad), cy + r * Math.sin(rad)];
+}
+
+/**
+ * 放射状の縦書きラベルを描く。
+ * 文字は外周側から中心に向かって並び、文字の上が外を向く（参考図と同じ向き）。
+ * text 内の "/" は列の区切りとして扱う（右の列が先）。
+ */
+const PIVOT_CLEAR = 70;   // 中心の留め具まわりに空けておく半径
+
+function radialLabel(parent, text, deg, rFar, rNear, opts){
+  const cols = String(text).split("/").map(s => s.trim()).filter(s => s.length);
+  if (!cols.length) return;
+
+  rNear = Math.max(rNear, PIVOT_CLEAR);
+  if (rFar - rNear < 20) return;
+  const band = rFar - rNear;
+  const maxLen = Math.max(...cols.map(c => [...c].length));
+  const lead = 1.18;                                   // 文字送り
+  let size = opts.fontSize;
+  const fit = band / (maxLen * lead);                  // 帯に収まる上限
+  if (size > fit) size = fit;
+
+  const colGap = size * 1.25;
+  const startPerp = -((cols.length - 1) * colGap) / 2; // 列全体を中心に揃える
+
+  cols.forEach((col, ci) => {
+    const chars = [...col];
+    const blockLen = chars.length * size * lead;
+    const rTop = rFar - (band - blockLen) / 2;         // 帯の中央に配置
+    const perp = startPerp + ci * colGap;
+
+    chars.forEach((ch, i) => {
+      const r = rTop - size * lead * (i + 0.5);
+      let [x, y] = polar(opts.cx, opts.cy, r, deg);
+      // 列方向（半径に垂直）へずらす
+      const pRad = (deg - 90 + 90) * Math.PI / 180;
+      x += perp * Math.cos(pRad);
+      y += perp * Math.sin(pRad);
+
+      const t = svgEl("text", {
+        x: 0, y: 0,
+        "font-size": size,
+        "font-family": FONTS[opts.font],
+        "text-anchor": "middle",
+        "dominant-baseline": "central",
+        fill: "#111",
+        transform: `translate(${x.toFixed(2)},${y.toFixed(2)}) rotate(${deg})`
+      });
+      t.textContent = ch;
+      parent.appendChild(t);
+    });
+  });
+}
+
+/* ---------- 円の描画 ---------- */
+function drawOuter(g, cfg){
+  const { cx, cy, R, stroke } = cfg;
+  const n = cfg.outer.length;
+
+  g.appendChild(svgEl("circle", {
+    cx, cy, r: R, fill: "none", stroke: "#111", "stroke-width": stroke
+  }));
+
+  if (n < 2) return;
+  for (let i = 0; i < n; i++){
+    const a = cfg.outerRot + i * 360 / n;
+    const [x, y] = polar(cx, cy, R, a);
+    g.appendChild(svgEl("line", {
+      x1: cx, y1: cy, x2: x, y2: y, stroke: "#111", "stroke-width": stroke
+    }));
+  }
+}
+
+function drawOuterLabels(g, cfg){
+  const n = cfg.outer.length;
+  const { R, rInner } = cfg;
+  const pad = (R - rInner) * 0.10;
+  const step = n ? 360 / n : 360;
+  cfg.outer.forEach((label, i) => {
+    const a = cfg.outerRot + i * step + step / 2;
+    radialLabel(g, label, a, R - pad, rInner + pad, cfg);
+  });
+}
+
+function drawInner(g, cfg, opaque){
+  const { cx, cy, rInner, stroke } = cfg;
+
+  g.appendChild(svgEl("circle", {
+    cx, cy, r: rInner,
+    fill: opaque ? "#fff" : "none",
+    stroke: "#111", "stroke-width": stroke
+  }));
+
+  const pad = rInner * 0.12;
+
+  if (cfg.innerMode === "wedge"){
+    const half = cfg.wedgeDeg / 2;
+    [-half, half].forEach(off => {
+      const [x, y] = polar(cx, cy, rInner, cfg.innerRot + off);
+      g.appendChild(svgEl("line", {
+        x1: cx, y1: cy, x2: x, y2: y, stroke: "#111", "stroke-width": stroke
+      }));
+    });
+    const label = (cfg.inner[0] || "");
+    radialLabel(g, label, cfg.innerRot, rInner - pad, pad, cfg);
+    return;
+  }
+
+  const n = cfg.inner.length;
+  if (n >= 2){
+    for (let i = 0; i < n; i++){
+      const a = cfg.innerRot + i * 360 / n;
+      const [x, y] = polar(cx, cy, rInner, a);
+      g.appendChild(svgEl("line", {
+        x1: cx, y1: cy, x2: x, y2: y, stroke: "#111", "stroke-width": stroke
+      }));
+    }
+  }
+  const step = n ? 360 / n : 360;
+  cfg.inner.forEach((label, i) => {
+    const a = cfg.innerRot + i * step + step / 2;
+    radialLabel(g, label, a, rInner - pad, pad, cfg);
+  });
+}
+
+/** 中心の留め具の位置を示す小さな十字 */
+function drawPivot(g, cfg){
+  const { cx, cy, stroke } = cfg;
+  const s = 10;
+  g.appendChild(svgEl("line", {x1:cx-s, y1:cy, x2:cx+s, y2:cy, stroke:"#111","stroke-width":stroke*0.8}));
+  g.appendChild(svgEl("line", {x1:cx, y1:cy-s, x2:cx, y2:cy+s, stroke:"#111","stroke-width":stroke*0.8}));
+}
+
+function makeSvg(cfg, parts){
+  const svg = svgEl("svg", {
+    viewBox: "0 0 1000 1000",
+    xmlns: NS
+  });
+  const g = svgEl("g", {});
+  svg.appendChild(g);
+
+  if (parts.outer){
+    drawOuter(g, cfg);
+    drawOuterLabels(g, cfg);
+  }
+  if (parts.inner){
+    drawInner(g, cfg, parts.outer);   // 重ね描きのときだけ内円を白で塗る
+  }
+  drawPivot(g, cfg);
+  return svg;
+}
+
+function makeSheet(cfg, parts, note, foot){
+  const sheet = document.createElement("div");
+  sheet.className = "sheet";
+
+  const h = document.createElement("div");
+  h.className = "sheet-title";
+  h.textContent = cfg.title;
+  sheet.appendChild(h);
+
+  if (note){
+    const p = document.createElement("div");
+    p.className = "sheet-note";
+    p.textContent = note;
+    sheet.appendChild(p);
+  }
+
+  const body = document.createElement("div");
+  body.className = "sheet-body";
+  body.appendChild(makeSvg(cfg, parts));
+  sheet.appendChild(body);
+
+  if (foot){
+    const f = document.createElement("div");
+    f.className = "sheet-foot";
+    f.textContent = foot;
+    sheet.appendChild(f);
+  }
+  return sheet;
+}
+
+/* ---------- 設定の読み書き ---------- */
+const $ = id => document.getElementById(id);
+
+function readForm(){
+  const lines = s => s.split("\n").map(t => t.trim()).filter(t => t.length);
+  const innerMode = document.querySelector('input[name=innerMode]:checked').value;
+  const R = 460;
+  const ratio = Number($("innerRatio").value) / 100;
+
+  return {
+    title: $("title").value || " ",
+    layout: $("layout").value,
+    outer: lines($("outerLabels").value),
+    inner: lines($("innerLabels").value),
+    innerMode,
+    wedgeDeg: Number($("wedgeDeg").value),
+    outerRot: Number($("outerRot").value),
+    innerRot: Number($("innerRot").value),
+    stroke: Number($("stroke").value),
+    fontSize: Number($("fontSize").value),
+    font: $("font").value,
+    cx: 500, cy: 500,
+    R,
+    rInner: R * ratio
+  };
+}
+
+function saveForm(){
+  const data = {
+    title: $("title").value,
+    layout: $("layout").value,
+    preset: $("preset").value,
+    nameSets,
+    innerLabels: $("innerLabels").value,
+    innerMode: document.querySelector('input[name=innerMode]:checked').value,
+    wedgeDeg: $("wedgeDeg").value,
+    innerRatio: $("innerRatio").value,
+    outerRot: $("outerRot").value,
+    innerRot: $("innerRot").value,
+    stroke: $("stroke").value,
+    fontSize: $("fontSize").value,
+    font: $("font").value
+  };
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); } catch (e) {}
+}
+
+function applyConfig(d){
+  $("title").value = d.title;
+  $("layout").value = d.layout;
+  nameSets = { ...DEFAULT_NAME_SETS, ...(d.nameSets || {}) };
+  $("preset").value = d.preset;
+  $("outerLabels").value = nameSets[d.preset] || "";
+  $("innerLabels").value = d.innerLabels;
+  document.querySelector(`input[name=innerMode][value="${d.innerMode}"]`).checked = true;
+  $("wedgeDeg").value = d.wedgeDeg;
+  $("innerRatio").value = d.innerRatio;
+  $("outerRot").value = d.outerRot;
+  $("innerRot").value = d.innerRot;
+  $("stroke").value = d.stroke;
+  $("fontSize").value = d.fontSize;
+  $("font").value = d.font;
+}
+
+function loadForm(){
+  let d = DEFAULTS;
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) d = Object.assign({}, DEFAULTS, JSON.parse(raw));
+  } catch (e) {}
+  applyConfig(d);
+}
+
+/* ---------- 描画 ---------- */
+function render(){
+  const cfg = readForm();
+  const host = $("sheets");
+  host.textContent = "";
+
+  const wedge = cfg.innerMode === "wedge";
+  $("wedgeDegLabel").style.display = wedge ? "" : "none";
+  $("wedgeDeg").style.display = wedge ? "" : "none";
+
+  $("outerRotV").textContent = `：${cfg.outerRot}°`;
+  $("innerRotV").textContent = `：${cfg.innerRot}°`;
+  $("innerRatioV").textContent = `：${$("innerRatio").value}%`;
+  $("wedgeDegV").textContent = `：${cfg.wedgeDeg}°`;
+
+  const outerN = cfg.outer.length;
+  const innerN = cfg.inner.length;
+  if (wedge){
+    $("countHint").textContent = `外周 ${outerN} 分割。内円は扇形1つだけです。`;
+  } else if (outerN !== innerN){
+    $("countHint").textContent =
+      `外周 ${outerN} 分割 / 内円 ${innerN} 分割。数が違うと重ねたときに区切りが合いません。`;
+  } else {
+    $("countHint").textContent = `外周・内円とも ${outerN} 分割です。`;
+  }
+
+  const L = cfg.layout;
+  if (L === "overlay" || L === "both"){
+    host.appendChild(makeSheet(cfg, {outer:true, inner:true},
+      "", "外周・内円それぞれを回して当番を決めます"));
+  }
+  if (L === "split" || L === "both" || L === "outer"){
+    host.appendChild(makeSheet(cfg, {outer:true, inner:false},
+      "【外周】円にそって切り取ります", "中心の印に割りピンを通します"));
+  }
+  if (L === "split" || L === "both" || L === "inner"){
+    host.appendChild(makeSheet(cfg, {outer:false, inner:true},
+      "【内円】円にそって切り取ります", "中心の印を外周の中心に合わせて重ねます"));
+  }
+  saveForm();
+}
+
+/* ---------- 起動 ---------- */
+loadForm();
+
+// 名簿を切り替えたら、その組の内容を出す
+$("preset").addEventListener("change", () => {
+  $("outerLabels").value = nameSets[$("preset").value] || "";
+  render();
+});
+// 編集中は select がまだ切り替わっていないので、その組に書き戻せばよい
+$("outerLabels").addEventListener("input", () => {
+  nameSets[$("preset").value] = $("outerLabels").value;
+});
+
+render();
+
+document.querySelectorAll(".panel input, .panel select, .panel textarea")
+  .forEach(e => {
+    e.addEventListener("input", render);
+    e.addEventListener("change", render);
+  });
+
+$("printBtn").addEventListener("click", () => window.print());
+$("resetBtn").addEventListener("click", () => {
+  if (!confirm("入力内容を初期状態に戻します。よろしいですか？")) return;
+  applyConfig(DEFAULTS);
+  render();
+});
+</script>
+</body>
+</html>
