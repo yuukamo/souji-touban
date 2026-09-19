@@ -81,6 +81,20 @@
   .sheet svg{width:180mm; height:180mm; display:block}
   .sheet-foot{font-size:3.2mm; color:#666; letter-spacing:.06em; padding-top:4mm}
 
+  /* ------- 画面上部の小さなプレビュー（狭い画面のみ） ------- */
+  #miniPreview{display:none}
+  .mini-bar{
+    display:flex; align-items:center; justify-content:space-between;
+    font-size:11px; color:#777; padding:0 2px 6px;
+  }
+  .mini-bar button{
+    font:inherit; font-size:11px; color:#555; background:none;
+    border:0; padding:4px 6px; cursor:pointer; text-decoration:underline;
+  }
+  .mini-wheel{display:flex; justify-content:center; height:32vh}
+  .mini-wheel svg{height:100%; width:auto; background:#fff; border-radius:4px}
+  #miniPreview.folded .mini-wheel{display:none}
+
   /* ------- 配布用QRコード ------- */
   .qr-box{background:#fff; border:1px solid var(--line); border-radius:6px; padding:10px}
   .qr-box svg{display:block; width:100%; max-width:170px; margin:0 auto}
@@ -123,7 +137,13 @@
   /* 画面が狭いときは設定を上、プレビューを下に積み、用紙は画面幅に合わせて縮める。
      印刷時は下の @media print が A4 に戻す。 */
   @media screen and (max-width: 900px){
-    .app{flex-direction:column}
+    .app{flex-direction:column; align-items:stretch}
+    #miniPreview{
+      display:block;
+      position:sticky; top:0; z-index:20;
+      background:var(--bg); border-bottom:1px solid var(--line);
+      padding:max(8px, env(safe-area-inset-top)) 12px 8px;
+    }
     .panel{
       width:100%; flex:none; position:static; max-height:none;
       border-right:0; border-bottom:1px solid var(--line);
@@ -148,6 +168,7 @@
     body{background:#fff}
     .no-print{display:none !important}
     #qrOverlay{display:none !important}
+    #miniPreview{display:none !important}
     .app{display:block}
     .preview{padding:0; gap:0}
     .sheet{box-shadow:none; width:210mm; height:297mm; break-after:page; page-break-after:always}
@@ -157,6 +178,16 @@
 </head>
 <body>
 <div class="app">
+
+  <!-- 狭い画面では設定とプレビューが縦に並ぶので、操作しながら結果が見えない。
+       画面上部にこれを貼りつけて、回転などの調整を見ながら行えるようにする。 -->
+  <div id="miniPreview" class="no-print">
+    <div class="mini-bar">
+      <span>プレビュー</span>
+      <button type="button" id="miniToggle">たたむ</button>
+    </div>
+    <div class="mini-wheel" id="miniWheel"></div>
+  </div>
 
   <aside class="panel no-print">
     <h1>円形当番表ジェネレーター</h1>
@@ -277,6 +308,7 @@ const QR_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 33 33" shap
 
 const NS = "http://www.w3.org/2000/svg";
 const STORAGE_KEY = "duty-wheel-config-v4";
+const MINI_KEY = "duty-wheel-mini-folded";   // 小さなプレビューをたたんだかどうか
 // 旧形式。読み込み時に引き継ぐ
 const LEGACY_KEYS = ["duty-wheel-config-v3", "duty-wheel-config-v2"];
 
@@ -735,6 +767,15 @@ function render(){
   $("innerFit").disabled = wedge || outerN < 1 || outerN === innerN;
 
   const L = cfg.layout;
+
+  // 配布用QRコードのページには回す円がないので、小さなプレビューは出さない
+  const mini = $("miniPreview");
+  mini.style.visibility = L === "qr" ? "hidden" : "";
+  if (L !== "qr"){
+    $("miniWheel").textContent = "";
+    $("miniWheel").appendChild(makeSvg(cfg, { outer: true, inner: true }));
+  }
+
   if (L === "qr"){
     host.appendChild(makeQrSheet());
     saveForm();
@@ -895,6 +936,24 @@ function setUpTasks(){
   });
 }
 
+/** 入力欄が長いときに邪魔にならないよう、小さなプレビューはたためるようにする */
+function setUpMiniPreview(){
+  const mini = $("miniPreview");
+  const btn = $("miniToggle");
+
+  const apply = folded => {
+    mini.classList.toggle("folded", folded);
+    btn.textContent = folded ? "ひらく" : "たたむ";
+    try { localStorage.setItem(MINI_KEY, folded ? "1" : "0"); } catch (e) {}
+  };
+
+  let folded = false;
+  try { folded = localStorage.getItem(MINI_KEY) === "1"; } catch (e) {}
+  apply(folded);
+
+  btn.addEventListener("click", () => apply(!mini.classList.contains("folded")));
+}
+
 /** ラベルの末尾に空き枠を1つ足す。数合わせや、手書きで埋める欄として使う */
 function appendBlank(target){
   const id = target === "outer" ? "outerLabels" : "innerLabels";
@@ -963,6 +1022,7 @@ function setUpQr(){
 loadForm();
 setUpRosters();
 setUpTasks();
+setUpMiniPreview();
 $("innerFit").addEventListener("click", fitInnerToOuter);
 $("outerBlank").addEventListener("click", () => appendBlank("outer"));
 $("innerBlank").addEventListener("click", () => appendBlank("inner"));
