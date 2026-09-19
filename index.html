@@ -81,6 +81,42 @@
   .sheet svg{width:180mm; height:180mm; display:block}
   .sheet-foot{font-size:3.2mm; color:#666; letter-spacing:.06em; padding-top:4mm}
 
+  /* ------- 配布用QRコード ------- */
+  .qr-box{background:#fff; border:1px solid var(--line); border-radius:6px; padding:10px}
+  .qr-box svg{display:block; width:100%; max-width:170px; margin:0 auto}
+  .qr-url{
+    font-size:11px; color:#666; text-align:center;
+    word-break:break-all; margin:8px 0 0; line-height:1.5;
+  }
+  button.ghost{
+    width:100%; margin-top:8px; padding:8px; font:inherit; font-size:13px;
+    background:#fff; color:#444; border:1px solid #c8c5be; border-radius:6px; cursor:pointer;
+  }
+  button.ghost:hover{background:#f4f2ee}
+
+  /* 離れた場所から読み取ってもらうための全画面表示 */
+  #qrOverlay{
+    position:fixed; inset:0; z-index:50; background:#fff; cursor:zoom-out;
+    display:none; flex-direction:column; align-items:center; justify-content:center;
+    gap:24px; padding:max(24px, env(safe-area-inset-top)) 24px max(24px, env(safe-area-inset-bottom));
+  }
+  #qrOverlay.open{display:flex}
+  #qrOverlay svg{width:min(78vw, 78vh, 520px); height:auto}
+  #qrOverlay .qr-url{font-size:15px; color:#333; max-width:90%}
+  #qrOverlay .qr-close{font-size:13px; color:#888}
+
+  /* QRコードを1枚の紙として配る場合 */
+  .qr-sheet-inner{display:flex; flex-direction:column; align-items:center; gap:8mm; width:100%}
+  .qr-sheet-inner svg{width:110mm; height:110mm}
+  .qr-steps{
+    font-size:4.4mm; line-height:2; color:#333; margin:0; padding:0;
+    list-style:none; counter-reset:step;
+  }
+  /* 折り返しても番号の下にぶら下がらないようにする */
+  .qr-steps li{counter-increment:step; padding-left:1.8em; text-indent:-1.8em}
+  .qr-steps li::before{content:counter(step) "  "; color:#888}
+  .qr-sheet-url{font-size:3.6mm; color:#555; word-break:break-all; text-align:center}
+
   /* 画面が狭いときは設定を上、プレビューを下に積み、用紙は画面幅に合わせて縮める。
      印刷時は下の @media print が A4 に戻す。 */
   @media screen and (max-width: 900px){
@@ -108,6 +144,7 @@
     @page{size:A4 portrait; margin:0}
     body{background:#fff}
     .no-print{display:none !important}
+    #qrOverlay{display:none !important}
     .app{display:block}
     .preview{padding:0; gap:0}
     .sheet{box-shadow:none; width:210mm; height:297mm; break-after:page; page-break-after:always}
@@ -133,6 +170,7 @@
         <option value="inner">内円だけ（1ページ）</option>
         <option value="overlay">重ねた完成イメージ（1ページ）</option>
         <option value="both">完成イメージ＋外周＋内円（3ページ）</option>
+        <option value="qr">配布用QRコード（1ページ）</option>
       </select>
       <p class="hint">外周と内円はどちらも円にそって切り取り、中心を重ねてとめます。2枚とも同じ縮尺で出力されるので、それぞれ独立に回せます。</p>
     </fieldset>
@@ -189,10 +227,20 @@
       </select>
     </fieldset>
 
+    <fieldset>
+      <legend>配布用QRコード</legend>
+      <div class="qr-box" id="qrBox"></div>
+      <p class="qr-url" id="qrUrl"></p>
+      <button class="ghost" id="qrBig">大きく表示</button>
+      <p class="hint" id="qrHint">読み取ってもらい、Safariで開いてから「ホーム画面に追加」してもらいます。紙で配るときは、上の印刷レイアウトで「配布用QRコード」を選んでください。</p>
+    </fieldset>
+
     <button class="print" id="printBtn">印刷 / PDFで保存</button>
     <button class="reset" id="resetBtn">初期状態に戻す</button>
     <p class="hint">印刷ダイアログで用紙をA4・向きを縦にし、「背景のグラフィック」は不要です。保存先に「PDFに保存」を選ぶとPDFになります。</p>
   </aside>
+
+  <div id="qrOverlay" class="no-print" role="dialog" aria-label="配布用QRコード"></div>
 
   <main class="preview">
     <div id="sheets" style="display:contents"></div>
@@ -201,6 +249,12 @@
 
 <script>
 "use strict";
+
+/** 配布用QRコードが指す先。公開URLが変わったらここと QR_SVG を作り直すこと */
+const APP_URL = "https://yuukamo.github.io/souji-touban/";
+
+/** APP_URL を符号化したQRコード（誤り訂正レベルM、33×33マス） */
+const QR_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 33 33" shape-rendering="crispEdges" role="img" aria-label="このアプリのURLのQRコード"><rect width="33" height="33" fill="#fff"/><path d="M2 2h7v1h-7zM11 2h3v1h-3zM15 2h2v1h-2zM20 2h1v1h-1zM22 2h1v1h-1zM24 2h7v1h-7zM2 3h1v1h-1zM8 3h1v1h-1zM10 3h1v1h-1zM13 3h1v1h-1zM19 3h1v1h-1zM24 3h1v1h-1zM30 3h1v1h-1zM2 4h1v1h-1zM4 4h3v1h-3zM8 4h1v1h-1zM10 4h1v1h-1zM12 4h2v1h-2zM16 4h1v1h-1zM20 4h2v1h-2zM24 4h1v1h-1zM26 4h3v1h-3zM30 4h1v1h-1zM2 5h1v1h-1zM4 5h3v1h-3zM8 5h1v1h-1zM10 5h2v1h-2zM13 5h3v1h-3zM18 5h2v1h-2zM22 5h1v1h-1zM24 5h1v1h-1zM26 5h3v1h-3zM30 5h1v1h-1zM2 6h1v1h-1zM4 6h3v1h-3zM8 6h1v1h-1zM11 6h1v1h-1zM13 6h1v1h-1zM15 6h1v1h-1zM18 6h5v1h-5zM24 6h1v1h-1zM26 6h3v1h-3zM30 6h1v1h-1zM2 7h1v1h-1zM8 7h1v1h-1zM11 7h1v1h-1zM13 7h1v1h-1zM15 7h2v1h-2zM18 7h1v1h-1zM20 7h1v1h-1zM22 7h1v1h-1zM24 7h1v1h-1zM30 7h1v1h-1zM2 8h7v1h-7zM10 8h1v1h-1zM12 8h1v1h-1zM14 8h1v1h-1zM16 8h1v1h-1zM18 8h1v1h-1zM20 8h1v1h-1zM22 8h1v1h-1zM24 8h7v1h-7zM10 9h3v1h-3zM14 9h1v1h-1zM18 9h1v1h-1zM22 9h1v1h-1zM2 10h1v1h-1zM8 10h1v1h-1zM10 10h1v1h-1zM13 10h3v1h-3zM17 10h3v1h-3zM22 10h3v1h-3zM27 10h3v1h-3zM2 11h3v1h-3zM6 11h1v1h-1zM10 11h3v1h-3zM14 11h4v1h-4zM19 11h3v1h-3zM25 11h2v1h-2zM28 11h2v1h-2zM2 12h1v1h-1zM4 12h3v1h-3zM8 12h1v1h-1zM10 12h2v1h-2zM15 12h5v1h-5zM23 12h1v1h-1zM25 12h1v1h-1zM4 13h4v1h-4zM13 13h1v1h-1zM16 13h3v1h-3zM23 13h1v1h-1zM27 13h1v1h-1zM3 14h1v1h-1zM7 14h2v1h-2zM10 14h2v1h-2zM14 14h3v1h-3zM18 14h1v1h-1zM20 14h1v1h-1zM22 14h1v1h-1zM24 14h2v1h-2zM30 14h1v1h-1zM2 15h1v1h-1zM4 15h1v1h-1zM6 15h2v1h-2zM9 15h1v1h-1zM12 15h2v1h-2zM15 15h1v1h-1zM17 15h6v1h-6zM24 15h3v1h-3zM29 15h2v1h-2zM6 16h1v1h-1zM8 16h1v1h-1zM10 16h2v1h-2zM13 16h1v1h-1zM15 16h3v1h-3zM19 16h1v1h-1zM24 16h5v1h-5zM3 17h1v1h-1zM7 17h1v1h-1zM10 17h1v1h-1zM12 17h1v1h-1zM15 17h2v1h-2zM23 17h4v1h-4zM28 17h1v1h-1zM30 17h1v1h-1zM2 18h1v1h-1zM6 18h1v1h-1zM8 18h1v1h-1zM11 18h2v1h-2zM14 18h1v1h-1zM16 18h4v1h-4zM22 18h1v1h-1zM25 18h1v1h-1zM27 18h2v1h-2zM2 19h1v1h-1zM4 19h1v1h-1zM7 19h1v1h-1zM9 19h1v1h-1zM12 19h2v1h-2zM17 19h2v1h-2zM21 19h2v1h-2zM24 19h3v1h-3zM28 19h3v1h-3zM2 20h2v1h-2zM5 20h1v1h-1zM7 20h2v1h-2zM10 20h1v1h-1zM14 20h4v1h-4zM20 20h2v1h-2zM26 20h2v1h-2zM30 20h1v1h-1zM2 21h1v1h-1zM4 21h1v1h-1zM6 21h1v1h-1zM10 21h2v1h-2zM13 21h2v1h-2zM16 21h1v1h-1zM18 21h1v1h-1zM23 21h4v1h-4zM2 22h1v1h-1zM4 22h1v1h-1zM7 22h2v1h-2zM10 22h2v1h-2zM14 22h1v1h-1zM19 22h1v1h-1zM21 22h6v1h-6zM28 22h3v1h-3zM10 23h6v1h-6zM17 23h4v1h-4zM22 23h1v1h-1zM26 23h2v1h-2zM2 24h7v1h-7zM11 24h1v1h-1zM13 24h1v1h-1zM15 24h5v1h-5zM21 24h2v1h-2zM24 24h1v1h-1zM26 24h3v1h-3zM2 25h1v1h-1zM8 25h1v1h-1zM12 25h1v1h-1zM15 25h1v1h-1zM21 25h2v1h-2zM26 25h1v1h-1zM29 25h2v1h-2zM2 26h1v1h-1zM4 26h3v1h-3zM8 26h1v1h-1zM12 26h1v1h-1zM14 26h2v1h-2zM18 26h1v1h-1zM21 26h7v1h-7zM30 26h1v1h-1zM2 27h1v1h-1zM4 27h3v1h-3zM8 27h1v1h-1zM14 27h1v1h-1zM17 27h2v1h-2zM21 27h2v1h-2zM25 27h1v1h-1zM27 27h2v1h-2zM30 27h1v1h-1zM2 28h1v1h-1zM4 28h3v1h-3zM8 28h1v1h-1zM11 28h1v1h-1zM15 28h3v1h-3zM21 28h1v1h-1zM23 28h7v1h-7zM2 29h1v1h-1zM8 29h1v1h-1zM11 29h1v1h-1zM13 29h1v1h-1zM15 29h1v1h-1zM17 29h2v1h-2zM23 29h1v1h-1zM25 29h4v1h-4zM30 29h1v1h-1zM2 30h7v1h-7zM10 30h2v1h-2zM14 30h1v1h-1zM16 30h1v1h-1zM19 30h1v1h-1zM21 30h1v1h-1zM23 30h2v1h-2zM27 30h2v1h-2z" fill="#111"/></svg>`;
 
 const NS = "http://www.w3.org/2000/svg";
 const STORAGE_KEY = "duty-wheel-config-v2";
@@ -433,6 +487,51 @@ function makeSheet(cfg, parts, note, foot){
   return sheet;
 }
 
+/** 配布用に、QRコードと手順だけを載せた1ページを作る */
+function makeQrSheet(){
+  const sheet = document.createElement("div");
+  sheet.className = "sheet";
+
+  const h = document.createElement("div");
+  h.className = "sheet-title";
+  h.textContent = "当番表アプリ";
+  sheet.appendChild(h);
+
+  const note = document.createElement("div");
+  note.className = "sheet-note";
+  note.textContent = "スマートフォンから使えます";
+  sheet.appendChild(note);
+
+  const body = document.createElement("div");
+  body.className = "sheet-body";
+
+  const inner = document.createElement("div");
+  inner.className = "qr-sheet-inner";
+  inner.innerHTML = QR_SVG;
+
+  const steps = document.createElement("ol");
+  steps.className = "qr-steps";
+  [
+    "カメラでこのQRコードを読み取る",
+    "開いたページで共有ボタン（□に↑）をタップ",
+    "「ホーム画面に追加」を選ぶ"
+  ].forEach(t => {
+    const li = document.createElement("li");
+    li.textContent = t;
+    steps.appendChild(li);
+  });
+  inner.appendChild(steps);
+
+  const url = document.createElement("div");
+  url.className = "qr-sheet-url";
+  url.textContent = APP_URL;
+  inner.appendChild(url);
+
+  body.appendChild(inner);
+  sheet.appendChild(body);
+  return sheet;
+}
+
 /* ---------- 設定の読み書き ---------- */
 const $ = id => document.getElementById(id);
 
@@ -532,6 +631,11 @@ function render(){
   }
 
   const L = cfg.layout;
+  if (L === "qr"){
+    host.appendChild(makeQrSheet());
+    saveForm();
+    return;
+  }
   if (L === "overlay" || L === "both"){
     host.appendChild(makeSheet(cfg, {outer:true, inner:true},
       "", "外周・内円それぞれを回して当番を決めます"));
@@ -547,8 +651,32 @@ function render(){
   saveForm();
 }
 
+/* ---------- 配布用QRコード ---------- */
+function setUpQr(){
+  $("qrBox").innerHTML = QR_SVG;
+  $("qrUrl").textContent = APP_URL;
+
+  const overlay = $("qrOverlay");
+  overlay.innerHTML = QR_SVG +
+    `<p class="qr-url">${APP_URL}</p><p class="qr-close">画面をタップすると閉じます</p>`;
+
+  const close = () => overlay.classList.remove("open");
+  $("qrBig").addEventListener("click", () => overlay.classList.add("open"));
+  overlay.addEventListener("click", close);
+  document.addEventListener("keydown", e => { if (e.key === "Escape") close(); });
+
+  // 公開URL以外から開いているときは、QRの指す先が今見ているページと違うと伝える
+  const here = location.origin + location.pathname.replace(/index\.html$/, "");
+  if (here !== APP_URL){
+    $("qrHint").textContent =
+      `このQRコードは ${APP_URL} を指します。いま開いているページ（${here}）とは別なので、` +
+      `配布前に公開URLで開き直して確認してください。`;
+  }
+}
+
 /* ---------- 起動 ---------- */
 loadForm();
+setUpQr();
 
 // 名簿を切り替えたら、その組の内容を出す
 $("preset").addEventListener("change", () => {
