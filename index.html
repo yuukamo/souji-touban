@@ -93,6 +93,9 @@
     background:#fff; color:#444; border:1px solid #c8c5be; border-radius:6px; cursor:pointer;
   }
   button.ghost:hover{background:#f4f2ee}
+  .row button.ghost{margin-top:0}
+  button.ghost:disabled{opacity:.45; cursor:not-allowed}
+  button.ghost:disabled:hover{background:#fff}
 
   /* 離れた場所から読み取ってもらうための全画面表示 */
   #qrOverlay{
@@ -178,14 +181,16 @@
     <fieldset>
       <legend>外周の円（名前）</legend>
       <label for="preset">名簿</label>
-      <select id="preset">
-        <option value="1">名簿1</option>
-        <option value="2">名簿2</option>
-        <option value="3">名簿3</option>
-      </select>
+      <select id="preset"></select>
+      <div class="row">
+        <button type="button" class="ghost" id="rosterAdd">名簿を追加</button>
+        <button type="button" class="ghost" id="rosterDel">この名簿を削除</button>
+      </div>
+      <label for="rosterName">名簿の呼び名</label>
+      <input type="text" id="rosterName" spellcheck="false">
       <label for="outerLabels">この名簿の名前（1行に1つ）</label>
       <textarea id="outerLabels" spellcheck="false"></textarea>
-      <p class="hint">行数がそのまま分割数になります。1つの区画を2列にしたいときは <code>山田 / 花子</code> のように <code>/</code> で区切ります。名簿1〜3はそれぞれ別に保存されるので、当番表の種類ごとに使い分けられます。</p>
+      <p class="hint">行数がそのまま分割数になります。1つの区画を2列にしたいときは <code>山田 / 花子</code> のように <code>/</code> で区切ります。名簿はいくつでも追加でき、それぞれ別に保存されます。</p>
       <label for="outerRot">向き（回転）<span id="outerRotV"></span></label>
       <input type="range" id="outerRot" min="0" max="359" value="0">
     </fieldset>
@@ -257,26 +262,30 @@ const APP_URL = "https://yuukamo.github.io/souji-touban/";
 const QR_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 33 33" shape-rendering="crispEdges" role="img" aria-label="このアプリのURLのQRコード"><rect width="33" height="33" fill="#fff"/><path d="M2 2h7v1h-7zM11 2h3v1h-3zM15 2h2v1h-2zM20 2h1v1h-1zM22 2h1v1h-1zM24 2h7v1h-7zM2 3h1v1h-1zM8 3h1v1h-1zM10 3h1v1h-1zM13 3h1v1h-1zM19 3h1v1h-1zM24 3h1v1h-1zM30 3h1v1h-1zM2 4h1v1h-1zM4 4h3v1h-3zM8 4h1v1h-1zM10 4h1v1h-1zM12 4h2v1h-2zM16 4h1v1h-1zM20 4h2v1h-2zM24 4h1v1h-1zM26 4h3v1h-3zM30 4h1v1h-1zM2 5h1v1h-1zM4 5h3v1h-3zM8 5h1v1h-1zM10 5h2v1h-2zM13 5h3v1h-3zM18 5h2v1h-2zM22 5h1v1h-1zM24 5h1v1h-1zM26 5h3v1h-3zM30 5h1v1h-1zM2 6h1v1h-1zM4 6h3v1h-3zM8 6h1v1h-1zM11 6h1v1h-1zM13 6h1v1h-1zM15 6h1v1h-1zM18 6h5v1h-5zM24 6h1v1h-1zM26 6h3v1h-3zM30 6h1v1h-1zM2 7h1v1h-1zM8 7h1v1h-1zM11 7h1v1h-1zM13 7h1v1h-1zM15 7h2v1h-2zM18 7h1v1h-1zM20 7h1v1h-1zM22 7h1v1h-1zM24 7h1v1h-1zM30 7h1v1h-1zM2 8h7v1h-7zM10 8h1v1h-1zM12 8h1v1h-1zM14 8h1v1h-1zM16 8h1v1h-1zM18 8h1v1h-1zM20 8h1v1h-1zM22 8h1v1h-1zM24 8h7v1h-7zM10 9h3v1h-3zM14 9h1v1h-1zM18 9h1v1h-1zM22 9h1v1h-1zM2 10h1v1h-1zM8 10h1v1h-1zM10 10h1v1h-1zM13 10h3v1h-3zM17 10h3v1h-3zM22 10h3v1h-3zM27 10h3v1h-3zM2 11h3v1h-3zM6 11h1v1h-1zM10 11h3v1h-3zM14 11h4v1h-4zM19 11h3v1h-3zM25 11h2v1h-2zM28 11h2v1h-2zM2 12h1v1h-1zM4 12h3v1h-3zM8 12h1v1h-1zM10 12h2v1h-2zM15 12h5v1h-5zM23 12h1v1h-1zM25 12h1v1h-1zM4 13h4v1h-4zM13 13h1v1h-1zM16 13h3v1h-3zM23 13h1v1h-1zM27 13h1v1h-1zM3 14h1v1h-1zM7 14h2v1h-2zM10 14h2v1h-2zM14 14h3v1h-3zM18 14h1v1h-1zM20 14h1v1h-1zM22 14h1v1h-1zM24 14h2v1h-2zM30 14h1v1h-1zM2 15h1v1h-1zM4 15h1v1h-1zM6 15h2v1h-2zM9 15h1v1h-1zM12 15h2v1h-2zM15 15h1v1h-1zM17 15h6v1h-6zM24 15h3v1h-3zM29 15h2v1h-2zM6 16h1v1h-1zM8 16h1v1h-1zM10 16h2v1h-2zM13 16h1v1h-1zM15 16h3v1h-3zM19 16h1v1h-1zM24 16h5v1h-5zM3 17h1v1h-1zM7 17h1v1h-1zM10 17h1v1h-1zM12 17h1v1h-1zM15 17h2v1h-2zM23 17h4v1h-4zM28 17h1v1h-1zM30 17h1v1h-1zM2 18h1v1h-1zM6 18h1v1h-1zM8 18h1v1h-1zM11 18h2v1h-2zM14 18h1v1h-1zM16 18h4v1h-4zM22 18h1v1h-1zM25 18h1v1h-1zM27 18h2v1h-2zM2 19h1v1h-1zM4 19h1v1h-1zM7 19h1v1h-1zM9 19h1v1h-1zM12 19h2v1h-2zM17 19h2v1h-2zM21 19h2v1h-2zM24 19h3v1h-3zM28 19h3v1h-3zM2 20h2v1h-2zM5 20h1v1h-1zM7 20h2v1h-2zM10 20h1v1h-1zM14 20h4v1h-4zM20 20h2v1h-2zM26 20h2v1h-2zM30 20h1v1h-1zM2 21h1v1h-1zM4 21h1v1h-1zM6 21h1v1h-1zM10 21h2v1h-2zM13 21h2v1h-2zM16 21h1v1h-1zM18 21h1v1h-1zM23 21h4v1h-4zM2 22h1v1h-1zM4 22h1v1h-1zM7 22h2v1h-2zM10 22h2v1h-2zM14 22h1v1h-1zM19 22h1v1h-1zM21 22h6v1h-6zM28 22h3v1h-3zM10 23h6v1h-6zM17 23h4v1h-4zM22 23h1v1h-1zM26 23h2v1h-2zM2 24h7v1h-7zM11 24h1v1h-1zM13 24h1v1h-1zM15 24h5v1h-5zM21 24h2v1h-2zM24 24h1v1h-1zM26 24h3v1h-3zM2 25h1v1h-1zM8 25h1v1h-1zM12 25h1v1h-1zM15 25h1v1h-1zM21 25h2v1h-2zM26 25h1v1h-1zM29 25h2v1h-2zM2 26h1v1h-1zM4 26h3v1h-3zM8 26h1v1h-1zM12 26h1v1h-1zM14 26h2v1h-2zM18 26h1v1h-1zM21 26h7v1h-7zM30 26h1v1h-1zM2 27h1v1h-1zM4 27h3v1h-3zM8 27h1v1h-1zM14 27h1v1h-1zM17 27h2v1h-2zM21 27h2v1h-2zM25 27h1v1h-1zM27 27h2v1h-2zM30 27h1v1h-1zM2 28h1v1h-1zM4 28h3v1h-3zM8 28h1v1h-1zM11 28h1v1h-1zM15 28h3v1h-3zM21 28h1v1h-1zM23 28h7v1h-7zM2 29h1v1h-1zM8 29h1v1h-1zM11 29h1v1h-1zM13 29h1v1h-1zM15 29h1v1h-1zM17 29h2v1h-2zM23 29h1v1h-1zM25 29h4v1h-4zM30 29h1v1h-1zM2 30h7v1h-7zM10 30h2v1h-2zM14 30h1v1h-1zM16 30h1v1h-1zM19 30h1v1h-1zM21 30h1v1h-1zM23 30h2v1h-2zM27 30h2v1h-2z" fill="#111"/></svg>`;
 
 const NS = "http://www.w3.org/2000/svg";
-const STORAGE_KEY = "duty-wheel-config-v2";
+const STORAGE_KEY = "duty-wheel-config-v3";
+const STORAGE_KEY_V2 = "duty-wheel-config-v2";   // 旧形式。読み込み時に引き継ぐ
+
+const NEW_ROSTER_LABELS = "Aさん\nBさん\nCさん\nDさん";
 
 /**
- * 外周に入れる名簿を3組ぶん持っておく。当番表の種類ごとに使い分ける想定。
+ * 外周に入れる名簿。当番表の種類ごとに使い分ける想定で、いくつでも増やせる。
  * 中身は localStorage にだけ置き、公開ファイルには実名を含めない。
  */
-const DEFAULT_NAME_SETS = {
-  "1": "Aさん\nBさん\nCさん\nDさん",
-  "2": "Aさん\nBさん\nCさん\nDさん",
-  "3": "Aさん\nBさん\nCさん\nDさん\nEさん"
-};
+const DEFAULT_ROSTERS = [
+  { name: "名簿1", labels: NEW_ROSTER_LABELS },
+  { name: "名簿2", labels: NEW_ROSTER_LABELS },
+  { name: "名簿3", labels: "Aさん\nBさん\nCさん\nDさん\nEさん" }
+];
 
-/** 選択中の名簿だけが textarea に出ている。残りはここに退避している */
-let nameSets = { ...DEFAULT_NAME_SETS };
+/** 選択中の名簿だけが入力欄に出ている。残りはここに退避している */
+let rosters = DEFAULT_ROSTERS.map(r => ({ ...r }));
+let rosterIndex = 0;
 
 const DEFAULTS = {
   title: "そうじ当番表",
   layout: "split",
-  preset: "1",
-  nameSets: DEFAULT_NAME_SETS,
+  rosters: DEFAULT_ROSTERS,
+  rosterIndex: 0,
   innerLabels: "ホウキ\nゾウキン\nまど拭き\nゴミすて\nつくえ拭き",
   innerMode: "split",
   wedgeDeg: 60,
@@ -563,8 +572,8 @@ function saveForm(){
   const data = {
     title: $("title").value,
     layout: $("layout").value,
-    preset: $("preset").value,
-    nameSets,
+    rosters,
+    rosterIndex,
     innerLabels: $("innerLabels").value,
     innerMode: document.querySelector('input[name=innerMode]:checked').value,
     wedgeDeg: $("wedgeDeg").value,
@@ -581,9 +590,10 @@ function saveForm(){
 function applyConfig(d){
   $("title").value = d.title;
   $("layout").value = d.layout;
-  nameSets = { ...DEFAULT_NAME_SETS, ...(d.nameSets || {}) };
-  $("preset").value = d.preset;
-  $("outerLabels").value = nameSets[d.preset] || "";
+  rosters = normalizeRosters(d.rosters);
+  rosterIndex = Math.min(Math.max(0, d.rosterIndex | 0), rosters.length - 1);
+  refreshRosterSelect();
+  showCurrentRoster();
   $("innerLabels").value = d.innerLabels;
   document.querySelector(`input[name=innerMode][value="${d.innerMode}"]`).checked = true;
   $("wedgeDeg").value = d.wedgeDeg;
@@ -595,11 +605,37 @@ function applyConfig(d){
   $("font").value = d.font;
 }
 
+/** 壊れた保存データでも起動できるよう、名簿の形を整える */
+function normalizeRosters(list){
+  const out = (Array.isArray(list) ? list : [])
+    .filter(r => r && typeof r === "object")
+    .map((r, i) => ({
+      name: String(r.name || `名簿${i + 1}`),
+      labels: String(r.labels == null ? "" : r.labels)
+    }));
+  return out.length ? out : DEFAULT_ROSTERS.map(r => ({ ...r }));
+}
+
+/** 名簿が「1」「2」「3」の固定3枠だった頃の保存データを引き継ぐ */
+function migrateV2(v2){
+  const sets = v2.nameSets || {};
+  const keys = Object.keys(sets).sort();
+  const rosters = keys.map(k => ({ name: `名簿${k}`, labels: String(sets[k] || "") }));
+  const idx = Math.max(0, keys.indexOf(String(v2.preset)));
+  const { nameSets, preset, ...rest } = v2;
+  return { ...rest, rosters, rosterIndex: idx };
+}
+
 function loadForm(){
   let d = DEFAULTS;
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) d = Object.assign({}, DEFAULTS, JSON.parse(raw));
+    if (raw){
+      d = Object.assign({}, DEFAULTS, JSON.parse(raw));
+    } else {
+      const old = localStorage.getItem(STORAGE_KEY_V2);
+      if (old) d = Object.assign({}, DEFAULTS, migrateV2(JSON.parse(old)));
+    }
   } catch (e) {}
   applyConfig(d);
 }
@@ -651,6 +687,71 @@ function render(){
   saveForm();
 }
 
+/* ---------- 名簿 ---------- */
+function refreshRosterSelect(){
+  const sel = $("preset");
+  sel.textContent = "";
+  rosters.forEach((r, i) => {
+    const o = document.createElement("option");
+    o.value = String(i);
+    o.textContent = r.name;
+    sel.appendChild(o);
+  });
+  sel.value = String(rosterIndex);
+  $("rosterDel").disabled = rosters.length < 2;   // 最後の1つは消させない
+}
+
+function showCurrentRoster(){
+  $("rosterName").value = rosters[rosterIndex].name;
+  $("outerLabels").value = rosters[rosterIndex].labels;
+}
+
+/** 「名簿4」のように、既存と重ならない名前を作る */
+function nextRosterName(){
+  let n = rosters.length + 1;
+  const used = new Set(rosters.map(r => r.name));
+  while (used.has(`名簿${n}`)) n++;
+  return `名簿${n}`;
+}
+
+function setUpRosters(){
+  $("preset").addEventListener("change", () => {
+    rosterIndex = Number($("preset").value);
+    showCurrentRoster();
+    render();
+  });
+
+  // 編集中は select がまだ切り替わっていないので、選択中の組に書き戻せばよい
+  $("outerLabels").addEventListener("input", () => {
+    rosters[rosterIndex].labels = $("outerLabels").value;
+  });
+
+  $("rosterName").addEventListener("input", () => {
+    rosters[rosterIndex].name = $("rosterName").value;
+    $("preset").options[rosterIndex].textContent = $("rosterName").value;
+  });
+
+  $("rosterAdd").addEventListener("click", () => {
+    rosters.push({ name: nextRosterName(), labels: NEW_ROSTER_LABELS });
+    rosterIndex = rosters.length - 1;
+    refreshRosterSelect();
+    showCurrentRoster();
+    $("rosterName").focus();
+    $("rosterName").select();
+    render();
+  });
+
+  $("rosterDel").addEventListener("click", () => {
+    if (rosters.length < 2) return;
+    if (!confirm(`「${rosters[rosterIndex].name}」を削除します。よろしいですか？`)) return;
+    rosters.splice(rosterIndex, 1);
+    rosterIndex = Math.min(rosterIndex, rosters.length - 1);
+    refreshRosterSelect();
+    showCurrentRoster();
+    render();
+  });
+}
+
 /* ---------- 配布用QRコード ---------- */
 function setUpQr(){
   $("qrBox").innerHTML = QR_SVG;
@@ -676,18 +777,8 @@ function setUpQr(){
 
 /* ---------- 起動 ---------- */
 loadForm();
+setUpRosters();
 setUpQr();
-
-// 名簿を切り替えたら、その組の内容を出す
-$("preset").addEventListener("change", () => {
-  $("outerLabels").value = nameSets[$("preset").value] || "";
-  render();
-});
-// 編集中は select がまだ切り替わっていないので、その組に書き戻せばよい
-$("outerLabels").addEventListener("input", () => {
-  nameSets[$("preset").value] = $("outerLabels").value;
-});
-
 render();
 
 document.querySelectorAll(".panel input, .panel select, .panel textarea")
