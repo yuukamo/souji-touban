@@ -190,7 +190,8 @@
       <input type="text" id="rosterName" spellcheck="false">
       <label for="outerLabels">この名簿の名前（1行に1つ）</label>
       <textarea id="outerLabels" spellcheck="false"></textarea>
-      <p class="hint">行数がそのまま分割数になります。1つの区画を2列にしたいときは <code>山田 / 花子</code> のように <code>/</code> で区切ります。名簿はいくつでも追加でき、それぞれ別に保存されます。</p>
+      <button type="button" class="ghost" id="outerBlank">空き枠を追加</button>
+      <p class="hint">行数がそのまま分割数になります。1つの区画を2列にしたいときは <code>山田 / 花子</code> のように <code>/</code> で区切ります。名簿はいくつでも追加でき、それぞれ別に保存されます。<br>「空き枠を追加」は <code>空き</code> の行を1つ足します。人数より作業が多いときの調整用です。文言は書き換えられます（<code>お休み</code> など）。</p>
       <label for="outerRot">向き（回転）<span id="outerRotV"></span></label>
       <input type="range" id="outerRot" min="0" max="359" value="0">
     </fieldset>
@@ -215,7 +216,10 @@
       <label for="wedgeDeg" id="wedgeDegLabel">扇形の角度<span id="wedgeDegV"></span></label>
       <input type="range" id="wedgeDeg" min="15" max="180" value="60">
       <p class="hint" id="countHint"></p>
-      <button type="button" class="ghost" id="innerFit">外周の分割数に合わせる</button>
+      <div class="row">
+        <button type="button" class="ghost" id="innerFit">外周の分割数に合わせる</button>
+        <button type="button" class="ghost" id="innerBlank">空き枠を追加</button>
+      </div>
       <label for="innerRatio">内円の大きさ<span id="innerRatioV"></span></label>
       <input type="range" id="innerRatio" min="30" max="80" value="55">
       <label for="innerRot">向き（回転）<span id="innerRotV"></span></label>
@@ -727,7 +731,7 @@ function render(){
   }
 
   // 指し示し型は分割数が関係ないので、そろえる意味がない
-  $("innerFit").style.display = wedge ? "none" : "";
+  $("innerFit").parentElement.style.display = wedge ? "none" : "";
   $("innerFit").disabled = wedge || outerN < 1 || outerN === innerN;
 
   const L = cfg.layout;
@@ -891,6 +895,19 @@ function setUpTasks(){
   });
 }
 
+/** ラベルの末尾に空き枠を1つ足す。数合わせや、手書きで埋める欄として使う */
+function appendBlank(target){
+  const id = target === "outer" ? "outerLabels" : "innerLabels";
+  const word = target === "outer" ? "空き" : "なし";
+  const cur = $(id).value.replace(/\s+$/, "");
+  $(id).value = (cur ? cur + "\n" : "") + word;
+
+  if (target === "outer") rosters[rosterIndex].labels = $(id).value;
+  else taskSets[taskIndex].labels = $(id).value;
+
+  render();
+}
+
 /**
  * 内円のラベルを外周の分割数にそろえる。
  * 足りなければ「なし」で埋め、多ければ区画ごとにまとめる。
@@ -947,6 +964,8 @@ loadForm();
 setUpRosters();
 setUpTasks();
 $("innerFit").addEventListener("click", fitInnerToOuter);
+$("outerBlank").addEventListener("click", () => appendBlank("outer"));
+$("innerBlank").addEventListener("click", () => appendBlank("inner"));
 setUpQr();
 render();
 
