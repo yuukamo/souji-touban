@@ -215,6 +215,7 @@
       <label for="wedgeDeg" id="wedgeDegLabel">扇形の角度<span id="wedgeDegV"></span></label>
       <input type="range" id="wedgeDeg" min="15" max="180" value="60">
       <p class="hint" id="countHint"></p>
+      <button type="button" class="ghost" id="innerFit">外周の分割数に合わせる</button>
       <label for="innerRatio">内円の大きさ<span id="innerRatioV"></span></label>
       <input type="range" id="innerRatio" min="30" max="80" value="55">
       <label for="innerRot">向き（回転）<span id="innerRotV"></span></label>
@@ -719,10 +720,15 @@ function render(){
     $("countHint").textContent = `外周 ${outerN} 分割。内円は扇形1つだけです。`;
   } else if (outerN !== innerN){
     $("countHint").textContent =
-      `外周 ${outerN} 分割 / 内円 ${innerN} 分割。数が違うと重ねたときに区切りが合いません。`;
+      `外周 ${outerN} 分割 / 内円 ${innerN} 分割。数が違うと重ねたときに区切りが合いません。` +
+      `下のボタンで、足りなければ「なし」を補い、多ければ区画ごとにまとめて揃えられます。`;
   } else {
     $("countHint").textContent = `外周・内円とも ${outerN} 分割です。`;
   }
+
+  // 指し示し型は分割数が関係ないので、そろえる意味がない
+  $("innerFit").style.display = wedge ? "none" : "";
+  $("innerFit").disabled = wedge || outerN < 1 || outerN === innerN;
 
   const L = cfg.layout;
   if (L === "qr"){
@@ -885,6 +891,34 @@ function setUpTasks(){
   });
 }
 
+/**
+ * 内円のラベルを外周の分割数にそろえる。
+ * 足りなければ「なし」で埋め、多ければ区画ごとにまとめる。
+ * まとめるときは偏らないように割り振る（8個を3区画なら 3/3/2）。
+ */
+function fitInnerToOuter(){
+  const outerN = readForm().outer.length;
+  const items = $("innerLabels").value.split("\n").map(t => t.trim()).filter(t => t.length);
+  if (outerN < 1) return;
+
+  let out;
+  if (items.length <= outerN){
+    out = items.concat(Array(outerN - items.length).fill("なし"));
+  } else {
+    out = [];
+    let i = 0;
+    for (let g = 0; g < outerN; g++){
+      const size = Math.ceil((items.length - i) / (outerN - g));
+      out.push(items.slice(i, i + size).join(" / "));
+      i += size;
+    }
+  }
+
+  $("innerLabels").value = out.join("\n");
+  taskSets[taskIndex].labels = $("innerLabels").value;
+  render();
+}
+
 /* ---------- 配布用QRコード ---------- */
 function setUpQr(){
   $("qrBox").innerHTML = QR_SVG;
@@ -912,6 +946,7 @@ function setUpQr(){
 loadForm();
 setUpRosters();
 setUpTasks();
+$("innerFit").addEventListener("click", fitInnerToOuter);
 setUpQr();
 render();
 
